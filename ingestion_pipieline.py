@@ -4,8 +4,14 @@ from langchain_text_splitters import CharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from dotenv import load_dotenv
+import chromadb
 
 load_dotenv()
+
+# ChromaDB HTTP server settings (client-server mode)
+CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
+CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
+CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 
 def load_documents(docs_path="docs"):
     if not os.path.exists(docs_path):
@@ -57,41 +63,47 @@ def split_documents(documents, chunk_size=1000, chunk_overlap=0):
     
     return chunks
 
-def create_vector_store(chunks, persist_directory="db/chroma_db"):
-    """Create and persist ChromaDB vector store"""
-    print("Creating embeddings and storing in ChromaDB...")
-        
+def create_vector_store(chunks):
+    """Create and store embeddings in ChromaDB running as an HTTP server (client-server mode)"""
+    print(f"Connecting to ChromaDB HTTP server at {CHROMA_HOST}:{CHROMA_PORT} ...")
+
+    # Connect to the running ChromaDB HTTP server
+    chroma_client = chromadb.HttpClient(
+        host=CHROMA_HOST,
+        port=CHROMA_PORT
+    )
+
+    # Verify connection
+    chroma_client.heartbeat()
+    print(f"Successfully connected to ChromaDB server.")
+
     embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    
-    # Create ChromaDB vector store
+
+    # Create ChromaDB vector store using the HTTP client
     print("--- Creating vector store ---")
     vectorstore = Chroma.from_documents(
         documents=chunks,
         embedding=embedding_model,
-        persist_directory=persist_directory, 
+        client=chroma_client,
+        collection_name=CHROMA_COLLECTION,
         collection_metadata={"hnsw:space": "cosine"}
     )
     print("--- Finished creating vector store ---")
-    
-    print(f"Vector store created and saved to {persist_directory}")
+
+    print(f"Vector store created in ChromaDB server collection: '{CHROMA_COLLECTION}'")
     return vectorstore
 
-    
 
 def main():
 
     print("Starting the ingestion pipeline...")
+    print(f"ChromaDB server: {CHROMA_HOST}:{CHROMA_PORT}  |  Collection: {CHROMA_COLLECTION}")
     # Load documents from the "docs" directory
     documents=load_documents(docs_path="docs")
     # Split the documents into smaller chunks
     chunks=split_documents(documents)
-    # Create vector embeddings for the chunks and storing them in ChromaDB
+    # Create vector embeddings for the chunks and storing them in ChromaDB HTTP server
     vector_store=create_vector_store(chunks)
-
-
-
-
-
 
 
 if __name__=="__main__":
