@@ -73,13 +73,11 @@ def create_vector_store(chunks):
         port=CHROMA_PORT
     )
 
-    # Verify connection
     chroma_client.heartbeat()
     print(f"Successfully connected to ChromaDB server.")
 
     embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-    # Create ChromaDB vector store using the HTTP client
     print("--- Creating vector store ---")
     vectorstore = Chroma.from_documents(
         documents=chunks,
@@ -98,11 +96,8 @@ def main():
 
     print("Starting the ingestion pipeline...")
     print(f"ChromaDB server: {CHROMA_HOST}:{CHROMA_PORT}  |  Collection: {CHROMA_COLLECTION}")
-    # Load documents from the "docs" directory
     documents=load_documents(docs_path="docs")
-    # Split the documents into smaller chunks
     chunks=split_documents(documents)
-    # Create vector embeddings for the chunks and storing them in ChromaDB HTTP server
     vector_store=create_vector_store(chunks)
 
 
