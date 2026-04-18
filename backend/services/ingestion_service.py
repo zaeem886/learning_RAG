@@ -10,24 +10,25 @@ import uuid
 from typing import List
 
 import chromadb
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
 
-from config import CHROMA_COLLECTION_NAME, CHROMA_PERSIST_DIR, EMBEDDING_MODEL_NAME
+from config import CHROMA_COLLECTION_NAME, CHROMA_PERSIST_DIR
 from database import SessionLocal
 from models import Document
 
 # Module-level singletons (loaded once, reused across background tasks)
-_embedding_model: SentenceTransformer | None = None
 _chroma_client: chromadb.PersistentClient | None = None
+_embedding_fn: DefaultEmbeddingFunction | None = None
 
 
-def _get_embedding_model() -> SentenceTransformer:
-    global _embedding_model
-    if _embedding_model is None:
-        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    return _embedding_model
+def _get_embedding_fn() -> DefaultEmbeddingFunction:
+    """ChromaDB default EF uses all-MiniLM-L6-v2 via ONNX (much lighter than PyTorch)."""
+    global _embedding_fn
+    if _embedding_fn is None:
+        _embedding_fn = DefaultEmbeddingFunction()
+    return _embedding_fn
 
 
 def _get_chroma_collection():
@@ -37,6 +38,7 @@ def _get_chroma_collection():
     return _chroma_client.get_or_create_collection(
         name=CHROMA_COLLECTION_NAME,
         metadata={"description": "PDF document embeddings for RAG"},
+        embedding_function=_get_embedding_fn(),
     )
 
 
@@ -79,20 +81,14 @@ def run_ingestion(document_id: int, file_path: str) -> None:
             db.commit()
             return
 
-        # 3. Embed
-        model = _get_embedding_model()
-        texts = [c.page_content for c in chunks]
-        embeddings = model.encode(texts, show_progress_bar=False)
-
-        # 4. Store in ChromaDB
+        # 3. Store in ChromaDB (embeddings generated automatically by the collection's EF)
         collection = _get_chroma_collection()
 
         ids: List[str] = []
         metadatas: List[dict] = []
         documents_text: List[str] = []
-        embeddings_list: List[list] = []
 
-        for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
+        for i, chunk in enumerate(chunks):
             chunk_id = f"doc{document_id}_{uuid.uuid4().hex[:8]}_{i}"
             ids.append(chunk_id)
 
@@ -105,7 +101,6 @@ def run_ingestion(document_id: int, file_path: str) -> None:
             }
             metadatas.append(meta)
             documents_text.append(chunk.page_content)
-            embeddings_list.append(emb.tolist())
 
         # ChromaDB has a batch limit; add in batches of 500
         batch_size = 500
@@ -113,12 +108,11 @@ def run_ingestion(document_id: int, file_path: str) -> None:
             end = start + batch_size
             collection.add(
                 ids=ids[start:end],
-                embeddings=embeddings_list[start:end],
                 metadatas=metadatas[start:end],
                 documents=documents_text[start:end],
             )
 
-        # 5. Update DB record
+        # 4. Update DB record
         doc.status = "ready"
         doc.chunk_count = len(chunks)
         db.commit()

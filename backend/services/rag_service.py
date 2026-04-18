@@ -5,13 +5,12 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 import chromadb
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from langchain_groq import ChatGroq
-from sentence_transformers import SentenceTransformer
 
 from config import (
     CHROMA_COLLECTION_NAME,
     CHROMA_PERSIST_DIR,
-    EMBEDDING_MODEL_NAME,
     GROQ_API_KEY,
     LLM_MODEL_NAME,
     LLM_TEMPERATURE,
@@ -19,23 +18,26 @@ from config import (
 from schemas import SourceChunk
 
 # Module-level singletons
-_embedding_model: SentenceTransformer | None = None
 _chroma_client: chromadb.PersistentClient | None = None
+_embedding_fn: DefaultEmbeddingFunction | None = None
 _llm: ChatGroq | None = None
 
 
-def _get_embedding_model() -> SentenceTransformer:
-    global _embedding_model
-    if _embedding_model is None:
-        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    return _embedding_model
+def _get_embedding_fn() -> DefaultEmbeddingFunction:
+    global _embedding_fn
+    if _embedding_fn is None:
+        _embedding_fn = DefaultEmbeddingFunction()
+    return _embedding_fn
 
 
 def _get_chroma_collection():
     global _chroma_client
     if _chroma_client is None:
         _chroma_client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
-    return _chroma_client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
+    return _chroma_client.get_or_create_collection(
+        name=CHROMA_COLLECTION_NAME,
+        embedding_function=_get_embedding_fn(),
+    )
 
 
 def _get_llm() -> ChatGroq:
@@ -58,21 +60,17 @@ def answer_question(
 
     Returns dict with keys: answer (str), sources (list[SourceChunk]).
     """
-    model = _get_embedding_model()
     collection = _get_chroma_collection()
     llm = _get_llm()
-
-    # Embed query
-    query_embedding = model.encode([query], show_progress_bar=False)[0]
 
     # Build metadata filter if a specific document is selected
     where_filter = None
     if document_id is not None:
         where_filter = {"document_id": document_id}
 
-    # Retrieve
-    query_kwargs = {
-        "query_embeddings": [query_embedding.tolist()],
+    # Retrieve — ChromaDB auto-embeds the query via the collection's EF
+    query_kwargs: dict = {
+        "query_texts": [query],
         "n_results": top_k,
     }
     if where_filter:
