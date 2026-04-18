@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+python-dotenv
+python-multipart
+passlib[bcrypt]
+pyjwt
+langchain-groq
+langchain-community
+langchain-text-splitters
+sentence-transformers
+chromadb
+pypdf
+aiofiles

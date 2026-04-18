@@ -2,4 +2,19 @@
 .env
 .env.local
 .env.*.local
-.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Data (local dev)
+data/
+
+# Node
+node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
