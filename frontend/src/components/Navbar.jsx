@@ -13,7 +13,7 @@ export default function Navbar() {
             <path d="m20 16-1.5-1.5"/>
             <path d="M12 16h6"/>
           </svg>
-          <span>DocChat AI</span>
+          <span>Docufy AI</span>
         </Link>
 
         <div className="navbar-right">
